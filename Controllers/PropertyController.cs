@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -86,11 +87,10 @@ namespace WebAPI.Controllers
 
         [HttpPost("AddProperty")]
         [Authorize]
-        public async Task<IActionResult> AddProperty(PropertyDTO prop)
+        public async Task<IActionResult> AddProperty([FromForm]  PropertyDTO prop)
         {
             try
             {
-
                 var property = new Property();
                 property.SellRent = prop.SellRent;
                 property.BHK = prop.BHK;
@@ -117,7 +117,72 @@ namespace WebAPI.Controllers
                 //property.Id = 90;
                 await dc.Properties.AddAsync(property);
                 await dc.SaveChangesAsync();
-                return StatusCode(201);
+                //return StatusCode(201);
+
+                //file upload 
+                var datas = Request.Form.Files;
+                var file = datas[0];
+                try
+                {
+                    //var file = Request.Form.Files[0];
+                    var folderName = Path.Combine("Resources", "Images");
+                    var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+                    if (datas[0].Length > 0)
+                    {
+
+
+                        var fileName = ContentDispositionHeaderValue.Parse(file.ContentDisposition).FileName.Trim('"');
+                        string TimeStamp = DateTime.Now.ToString("yyyMMddHmmss");
+                        string imageExtention = System.IO.Path.GetExtension(file.FileName);
+                        string CompletePath = TimeStamp + imageExtention;
+                        fileName = CompletePath.Replace(" ", "_");
+
+                        var fullPath = Path.Combine(pathToSave, fileName);
+                        // var dbPath = Path.Combine(folderName, fileName);
+                        using (var stream = new FileStream(fullPath, FileMode.Create))
+                        {
+                            file.CopyTo(stream);
+                        }
+
+                        var photo = new Photo();
+                        photo.LastUpdatedOn = DateTime.Now;
+                        photo.LastUpdatedBy = GetUserID();
+                        photo.PublicId = fullPath;
+                        photo.ImageUrl = fileName;
+                        int propid = property.Id;
+
+                        int data = dc.Photos.Where(e => e.PropertyId == propid).Count();
+                        //var data = dc.Database.ExecuteSqlCommand("select count(*) from Photos where PropertyId ="+ propid);
+                        if (data > 0)
+                        {
+                            photo.IsPrimary = false;
+
+                        }
+                        else
+                        {
+                            photo.IsPrimary = true;
+                        }
+                        photo.PropertyId = propid;
+
+                       await dc.Photos.AddAsync(photo);
+                        await dc.SaveChangesAsync();
+                        // return StatusCode(201);
+
+
+                        return Ok(201);
+                    }
+                    else
+                    {
+                        return BadRequest(500);
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(500, $"Internal server error: { ex}");
+                }
+
+
             }
             catch (Exception ex)
             {
